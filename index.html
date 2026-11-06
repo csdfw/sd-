@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="答题卡">
+<meta name="theme-color" content="#f9f9f9">
+<meta name="format-detection" content="telephone=no">
+<title>答题卡</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --blue:#0a84ff; --green:#34c759; --red:#ff3b30; --amber:#ff9500;
+    --bg:#f2f2f7; --card:#fff; --sep:#e5e5ea;
+    --label:#1c1c1e; --label2:#8e8e93; --label3:#c7c7cc;
+    --safe-b:env(safe-area-inset-bottom,0px);
+    --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;overflow:hidden;}
+  body{
+    background:var(--bg);color:var(--label);font-size:15px;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-text-size-adjust:100%;
+    -webkit-touch-callout:none;
+  }
+  input,textarea{-webkit-user-select:text;user-select:text;}
+
+  /* ============ 布局 ============ */
+  .app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+  /* ============ 顶部 ============ */
+  .header{
+    flex:none;z-index:20;
+    background:rgba(249,249,249,.94);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    backdrop-filter:saturate(180%) blur(20px);
+    border-bottom:.5px solid var(--sep);
+    padding-top:var(--safe-t);
+  }
+  .navbar{
+    height:44px;display:flex;align-items:center;justify-content:center;position:relative;
+    padding:0 14px;
+  }
+  .nav-title{font-size:17px;font-weight:600;letter-spacing:.3px;}
+  .nav-badge{
+    position:absolute;right:14px;top:50%;transform:translateY(-50%);
+    font-size:12px;color:var(--label2);font-variant-numeric:tabular-nums;
+    background:#e9e9ee;padding:3px 9px;border-radius:20px;
+  }
+
+  /* 分段 chips */
+  .chips{
+    display:flex;gap:8px;overflow-x:auto;padding:0 12px 9px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+  }
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex:none;border:none;font-family:inherit;font-size:12.5px;
+    padding:6px 12px;border-radius:16px;background:#e9e9ee;color:#48484a;
+    display:flex;align-items:center;gap:6px;white-space:nowrap;
+    transition:transform .12s,background .18s;
+  }
+  .chip:active{transform:scale(.95);}
+  .chip.on{background:var(--blue);color:#fff;}
+  .chip .n{font-size:11px;opacity:.65;font-variant-numeric:tabular-nums;}
+
+  /* ============ 内容区 ============ */
+  .content{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;}
+  .page{display:none;padding:10px 10px 20px;}
+  .page.on{display:block;}
+
+  /* ============ 题目 ============ */
+  .q{
+    display:flex;align-items:center;gap:6px;background:var(--card);
+    border-radius:10px;padding:6px 8px;margin-bottom:7px;
+    transition:box-shadow .15s;
+  }
+  .q .no{
+    width:26px;flex:none;text-align:center;font-size:12px;font-weight:600;
+    color:var(--label2);font-variant-numeric:tabular-nums;
+  }
+  .opts{flex:1;display:flex;border-radius:8px;overflow:hidden;background:#f2f2f7;}
+  .opt{
+    flex:1;border:none;font-family:inherit;background:transparent;
+    height:38px;font-size:15px;font-weight:500;color:#3a3a3c;
+    transition:background .12s,color .12s;
+    touch-action:manipulation;padding:0;
+  }
+  .opt:active{background:#e2e2ea;}
+  .opt.sel{background:var(--blue);color:#fff;font-weight:700;}
+  .opt.ans-ok{background:#dff7e6;color:#128a3c;font-weight:700;}
+  .opt.ans-no{background:#ffe3e2;color:#c9261f;font-weight:700;}
+  .opt.sel.ans-ok{background:var(--green);color:#fff;}
+  .opt.sel.ans-no{background:var(--red);color:#fff;}
+  .q.correct{box-shadow:inset 3px 0 0 var(--green);}
+  .q.wrong{box-shadow:inset 3px 0 0 var(--red);}
+  .q.missing{opacity:.75;}
+
+  /* ============ 通用卡片 ============ */
+  .group{margin-bottom:22px;}
+  .group-title{
+    font-size:12.5px;color:var(--label2);padding:0 16px 7px;font-weight:400;
+    text-transform:none;
+  }
+  .card{background:var(--card);border-radius:12px;overflow:hidden;margin:0 0;}
+  .cell{
+    display:flex;align-items:center;gap:12px;padding:13px 16px;
+    font-size:15.5px;color:var(--label);background:var(--card);
+    position:relative;
+  }
+  .cell:active{background:#e9e9ee;}
+  .cell .ico{width:22px;text-align:center;font-size:17px;flex:none;}
+  .cell .grow{flex:1;min-width:0;}
+  .cell .sub{font-size:12.5px;color:var(--label2);margin-top:2px;line-height:1.35;}
+  .cell .arrow{color:var(--label3);font-size:15px;flex:none;}
+  .cell.danger{color:var(--red);justify-content:center;}
+  .cell.center{justify-content:center;}
+  .sep-line{height:.5px;background:var(--sep);margin-left:50px;}
+  .sep-line.full{margin-left:0;}
+
+  /* 输入区 */
+  .drawer{
+    max-height:0;overflow:hidden;transition:max-height .28s ease;
+    background:var(--card);
+  }
+  .drawer.open{max-height:420px;}
+  .drawer-inner{padding:0 14px 14px;}
+  textarea{
+    width:100%;height:112px;padding:10px 12px;font-size:16px;
+    border:1px solid var(--sep);border-radius:10px;background:#f7f7fa;
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",monospace;
+    resize:none;outline:none;color:var(--label);line-height:1.45;
+    -webkit-appearance:none;
+  }
+  textarea:focus{border-color:var(--blue);background:#fff;}
+  .drawer-btns{display:flex;gap:10px;margin-top:10px;}
+  .btn{
+    flex:1;border:none;font-family:inherit;font-size:15px;font-weight:600;
+    padding:11px 16px;border-radius:10px;background:var(--blue);color:#fff;
+    transition:transform .1s,opacity .15s;
+  }
+  .btn:active{transform:scale(.97);opacity:.85;}
+  .btn.gray{background:#e9e9ee;color:var(--blue);}
+  .hint{font-size:12px;color:var(--label2);line-height:1.5;padding:8px 2px 0;}
+
+  /* ============ 成绩页 ============ */
+  .score-card{
+    background:var(--card);border-radius:14px;padding:22px 18px 18px;
+    text-align:center;margin-bottom:14px;
+  }
+  .score-label{font-size:12.5px;color:var(--label2);letter-spacing:1px;}
+  .score-value{
+    font-size:56px;font-weight:800;line-height:1.05;margin:6px 0 2px;
+    color:var(--blue);font-variant-numeric:tabular-nums;letter-spacing:-1px;
+  }
+  .score-value small{font-size:19px;font-weight:600;margin-left:2px;letter-spacing:0;}
+  .score-sub{font-size:13px;color:var(--label2);}
+  .score-sub b{color:var(--label);font-weight:600;}
+  .score-nums{
+    display:flex;margin-top:16px;padding-top:14px;border-top:.5px solid var(--sep);
+  }
+  .score-nums > div{flex:1;}
+  .score-nums .k{font-size:12px;color:var(--label2);margin-bottom:3px;}
+  .score-nums .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .v.g{color:var(--green);} .v.r{color:var(--red);} .v.m{color:var(--label2);}
+
+  .bar-row{
+    display:flex;align-items:center;gap:10px;padding:9px 16px;background:var(--card);
+  }
+  .bar-row + .bar-row{border-top:.5px solid var(--sep);}
+  .bar-row .nm{width:72px;flex:none;font-size:13px;color:var(--label);}
+  .bar-row .track{flex:1;height:7px;background:#efeff4;border-radius:4px;overflow:hidden;}
+  .bar-row .track > i{display:block;height:100%;border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1);}
+  .bar-row .pc{flex:none;font-size:12px;color:var(--label2);width:52px;text-align:right;font-variant-numeric:tabular-nums;}
+  .i.good{background:var(--green);} .i.mid{background:var(--amber);} .i.bad{background:var(--red);}
+
+  .detail-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;padding:0 2px;}
+  .dc{
+    font-size:12px;padding:7px 9px;border-radius:8px;line-height:1.35;
+    font-variant-numeric:tabular-nums;
+  }
+  .dc.ok{background:#dff7e6;color:#128a3c;}
+  .dc.no{background:#ffe3e2;color:#c9261f;}
+  .dc.skip{background:#e9e9ee;color:var(--label2);}
+  .dc b{font-weight:700;}
+
+  .empty{
+    text-align:center;padding:60px 30px;color:var(--label2);font-size:14px;line-height:1.7;
+  }
+  .empty .big{font-size:40px;display:block;margin-bottom:14px;opacity:.4;}
+
+  /* ============ 底部 Tab ============ */
+  .tabbar{
+    flex:none;display:flex;background:rgba(249,249,249,.96);
+    -webkit-backdrop-filter:saturate(180%) blur(20px);
+    backdrop-filter:saturate(180%) blur(20px);
+    border-top:.5px solid var(--sep);
+    padding-bottom:var(--safe-b);
+  }
+  .tab{
+    flex:1;border:none;background:none;font-family:inherit;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:2px;padding:7px 0 5px;color:var(--label2);font-size:10.5px;
+    transition:color .15s;
+  }
+  .tab svg{width:24px;height:24px;display:block;}
+  .tab.on{color:var(--blue);}
+
+  /* ============ 浮层 ============ */
+  #toast{
+    position:fixed;left:50%;bottom:calc(96px + var(--safe-b));z-index:200;
+    transform:translate(-50%,10px);opacity:0;pointer-events:none;
+    background:rgba(28,28,30,.92);color:#fff;font-size:13.5px;
+    padding:11px 20px;border-radius:22px;max-width:80vw;text-align:center;
+    transition:opacity .22s,transform .22s;line-height:1.4;
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  }
+  #toast.show{opacity:1;transform:translate(-50%,0);}
+
+  .mask{
+    position:fixed;inset:0;z-index:300;background:rgba(0,0,0,.35);
+    display:flex;align-items:center;justify-content:center;padding:34px;
+    -webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);
+    animation:fade .2s;
+  }
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+  .dialog{
+    width:100%;max-width:272px;background:rgba(255,255,255,.96);border-radius:14px;
+    overflow:hidden;text-align:center;
+    -webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);
+  }
+  .dialog-body{padding:19px 18px 16px;font-size:14.5px;line-height:1.5;}
+  .dialog-body .t{font-weight:600;font-size:16px;margin-bottom:5px;}
+  .dialog-body .d{color:#3a3a3c;font-size:13.5px;}
+  .dialog-btns{display:flex;border-top:.5px solid rgba(0,0,0,.12);}
+  .dialog-btns button{
+    flex:1;border:none;background:none;font-family:inherit;font-size:16.5px;
+    padding:12px 4px;color:var(--blue);
+  }
+  .dialog-btns button:active{background:rgba(0,0,0,.06);}
+  .dialog-btns button + button{border-left:.5px solid rgba(0,0,0,.12);}
+  .dialog-btns button.danger{color:var(--red);font-weight:600;}
+  .dialog-btns button.ok{font-weight:600;}
+
+  #debugBox{
+    margin:0 14px 12px;padding:10px 12px;background:#fff8e6;border-radius:10px;
+    font-size:11.5px;color:#7a6426;white-space:pre-wrap;max-height:170px;
+    overflow:auto;font-family:Menlo,monospace;display:none;line-height:1.45;
+  }
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- 顶部 -->
+  <header class="header">
+    <div class="navbar">
+      <div class="nav-title" id="navTitle">答题卡</div>
+      <div class="nav-badge" id="navBadge">0/130</div>
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <!-- 内容 -->
+  <main class="content" id="content">
+
+    <!-- 答题页 -->
+    <section class="page on" id="page-answer"></section>
+
+    <!-- 成绩页 -->
+    <section class="page" id="page-stats"></section>
+
+    <!-- 设置页 -->
+    <section class="page" id="page-settings"></section>
+
+  </main>
+
+  <!-- 底部导航 -->
+  <nav class="tabbar">
+    <button class="tab on" data-tab="answer">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4" y="3" width="16" height="18" rx="3"/>
+        <path d="M8.5 12.5l2.2 2.2 4.8-5"/>
+      </svg>
+      <span>答题</span>
+    </button>
+    <button class="tab" data-tab="stats">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 20V11M10 20V5M16 20v-6M22 20H2"/>
+      </svg>
+      <span>成绩</span>
+    </button>
+    <button class="tab" data-tab="settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/>
+      </svg>
+      <span>设置</span>
+    </button>
+  </nav>
+
+</div>
+
+<div id="toast"></div>
+
+<div id="confirmMask" class="mask hidden">
+  <div class="dialog">
+    <div class="dialog-body">
+      <div class="t" id="dlgTitle">提示</div>
+      <div class="d" id="dlgText"></div>
+    </div>
+    <div class="dialog-btns">
+      <button id="dlgCancel">取消</button>
+      <button id="dlgOk" class="ok">确定</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   应用图标（动态生成，iOS 添加到主屏时使用）
+   ========================================================= */
+(function makeIcon(){
+  try{
+    const c = document.createElement('canvas');
+    c.width = c.height = 180;
+    const x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 180, 180);
+    g.addColorStop(0, '#4a9eff');
+    g.addColorStop(1, '#0a6cff');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 180, 180);
+    x.fillStyle = '#fff';
+    x.font = 'bold 104px -apple-system, "PingFang SC", sans-serif';
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText('答', 90, 96);
+    const url = c.toDataURL('image/png');
+    ['apple-touch-icon', 'icon'].forEach(rel => {
+      const l = document.createElement('link');
+      l.rel = rel;
+      l.href = url;
+      document.head.appendChild(l);
+    });
+  }catch(e){}
+})();
+
+/* =========================================================
+   0. PDF.js
+   ========================================================= */
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+/* =========================================================
+   1. 基础数据
+   ========================================================= */
+const TOTAL_Q = 130;
+const REF = {};   // 参考答案
+const SEL = {};   // 我的作答
+
+const SECTIONS = [
+  { name:'政治理论', start:1,   end:20  },
+  { name:'常识',     start:21,  end:35  },
+  { name:'言语理解', start:36,  end:65  },
+  { name:'数量计算', start:66,  end:75  },
+  { name:'判断推理', start:76,  end:110 },
+  { name:'资料分析', start:111, end:130 },
+];
+
+const RAW_FULL = 99.9;
+const DISPLAY_FULL = 100;
+const LS_KEY = 'dtk_app_v1';
+
+function pointsFor(n){
+  return (n >= 1 && n <= 35) || (n >= 95 && n <= 100) ? 0.7 : 0.8;
+}
+function sectionIndexOf(n){
+  for (let i = 0; i < SECTIONS.length; i++){
+    if (n >= SECTIONS[i].start && n <= SECTIONS[i].end) return i;
+  }
+  return -1;
+}
+
+const $  = s => document.querySelector(s);
+const $$ = s => Array.prototype.slice.call(document.querySelectorAll(s));
+
+/* =========================================================
+   2. 状态
+   ========================================================= */
+let curSec  = 0;        // 当前部分
+let curTab  = 'answer'; // 当前标签
+let graded  = false;    // 是否已交卷
+let RESULT  = null;     // 计算结果
+
+/* =========================================================
+   3. 本地存储
+   ========================================================= */
+function saveState(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({ REF, SEL }));
+  }catch(e){}
+}
+function loadState(){
+  try{
+    const d = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    Object.assign(REF, d.REF || {});
+    Object.assign(SEL, d.SEL || {});
+  }catch(e){}
+}
+function clearState(){
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+}
+
+/* =========================================================
+   4. Toast / 弹窗
+   ========================================================= */
+let toastTimer = null;
+function toast(msg){
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+}
+
+function dialog(opts){
+  const mask = $('#confirmMask');
+  $('#dlgTitle').textContent = opts.title || '提示';
+  $('#dlgText').textContent  = opts.text  || '';
+  const ok = $('#dlgOk'), cancel = $('#dlgCancel');
+
+  ok.textContent = opts.okText || '确定';
+  ok.className = opts.danger ? 'danger' : 'ok';
+  cancel.textContent = opts.cancelText || '取消';
+
+  mask.classList.remove('hidden');
+
+  const close = () => {
+    mask.classList.add('hidden');
+    ok.onclick = cancel.onclick = mask.onclick = null;
+  };
+  ok.onclick     = () => { close(); opts.onOk && opts.onOk(); };
+  cancel.onclick = () => { close(); opts.onCancel && opts.onCancel(); };
+  mask.onclick   = e => { if (e.target === mask) close(); };
+}
+
+/* =========================================================
+   5. 计分
+   ========================================================= */
+function computeResult(){
+  const parts = SECTIONS.map(sec => ({
+    sec,
+    total: sec.end - sec.start + 1,
+    right: 0, wrong: 0, blank: 0, missing: 0,
+    cells: []
+  }));
+
+  let raw = 0, right = 0, wrong = 0, blank = 0, missing = 0;
+
+  for (let n = 1; n <= TOTAL_Q; n++){
+    const ref  = REF[n];
+    const mine = SEL[n];
+    const P = parts[sectionIndexOf(n)];
+
+    if (!ref){
+      missing++; P.missing++;
+      P.cells.push({ n, status:'missing' });
+      continue;
+    }
+
+    if (mine === ref){
+      raw += pointsFor(n);
+      right++; P.right++;
+      P.cells.push({ n, status:'ok', mine, ref });
+    } else {
+      if (mine){ wrong++; P.wrong++; }
+      else     { blank++; P.blank++; }
+      P.cells.push({ n, status:'no', mine, ref });
+    }
+  }
+
+  return {
+    parts, raw, right, wrong, blank, missing,
+    score: Math.round(raw / RAW_FULL * DISPLAY_FULL * 10) / 10,
+    totalRate: right / TOTAL_Q * 100,
+    hasRef: Object.keys(REF).length > 0
+  };
+}
+
+/* =========================================================
+   6. 渲染 —— 分段 chips
+   ========================================================= */
+function renderChips(){
+  const box = $('#chips');
+  box.innerHTML = SECTIONS.map((s, i) => {
+    let done = 0;
+    for (let n = s.start; n <= s.end; n++) if (SEL[n]) done++;
+    return `<button class="chip${i === curSec ? ' on' : ''}" data-i="${i}">
+      ${s.name}<span class="n">${done}/${s.end - s.start + 1}</span>
+    </button>`;
+  }).join('');
+}
+
+/* =========================================================
+   7. 渲染 —— 答题页
+   ========================================================= */
+function qHtml(n){
+  const mine = SEL[n];
+  const ref  = REF[n];
+  const judged = graded && ref;
+
+  let cls = 'q';
+  if (judged){
+    cls += (mine === ref) ? ' correct' : ' wrong';
+  } else if (graded && !ref){
+    cls += ' missing';
+  }
+
+  let opts = '';
+  for (const l of ['A','B','C','D']){
+    let oc = 'opt';
+    if (mine === l) oc += ' sel';
+    if (judged){
+      if (l === ref) oc += ' ans-ok';
+      else if (l === mine) oc += ' ans-no';
+    }
+    opts += `<button class="${oc}" data-l="${l}" type="button">${l}</button>`;
+  }
+
+  return `<div class="${cls}" data-n="${n}">
+    <span class="no">${n}</span>
+    <div class="opts">${opts}</div>
+  </div>`;
+}
+
+function renderAnswerPage(){
+  const sec = SECTIONS[curSec];
+  let html = '';
+  for (let n = sec.start; n <= sec.end; n++) html += qHtml(n);
+  $('#page-answer').innerHTML = html;
+}
+
+function refreshQuestion(n){
+  const el = document.querySelector(`#page-answer .q[data-n="${n}"]`);
+  if (!el) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = qHtml(n);
+  el.replaceWith(tmp.firstElementChild);
+}
+
+function refreshAnswerPageMarkers(){
+  const sec = SECTIONS[curSec];
+  for (let n = sec.start; n <= sec.end; n++) refreshQuestion(n);
+}
+
+/* =========================================================
+   8. 渲染 —— 成绩页
+   ========================================================= */
+function renderStatsPage(){
+  const box = $('#page-stats');
+
+  if (!graded || !RESULT){
+    box.innerHTML = `<div class="empty">
+      <span class="big">📊</span>
+      ${Object.keys(SEL).length === 0
+        ? '还没有作答<br>先去「答题」页面选择答案吧'
+        : '共已作答 ' + Object.keys(SEL).length + ' 题<br>点击右上角「交卷」查看成绩'}
+    </div>`;
+    return;
+  }
+
+  const R = RESULT;
+
+  let html = '';
+
+  /* 成绩卡 */
+  html += `<div class="score-card">
+    <div class="score-label">本次得分</div>
+    <div class="score-value">${R.score.toFixed(1)}<small>分</small></div>
+    <div class="score-sub">满分 ${DISPLAY_FULL} 分 · 总正确率 ${R.totalRate.toFixed(1)}%</div>
+    <div class="score-nums">
+      <div><div class="k">答对</div><div class="v g">${R.right}</div></div>
+      <div><div class="k">答错</div><div class="v r">${R.wrong}</div></div>
+      <div><div class="k">未答</div><div class="v m">${R.blank}</div></div>
+      ${R.missing ? `<div><div class="k">缺答案</div><div class="v m">${R.missing}</div></div>` : ''}
+    </div>
+  </div>`;
+
+  /* 各部分正确率 */
+  html += `<div class="group">
+    <div class="group-title">各部分正确率</div>
+    <div class="card">`;
+
+  html += R.parts.map(P => {
+    const rate = P.right / P.total * 100;
+    return `<div class="bar-row">
+      <span class="nm">${P.sec.name}</span>
+      <div class="track"><i class="${rateClass(rate)}" style="width:${rate.toFixed(1)}%"></i></div>
+      <span class="pc">${rate.toFixed(1)}%</span>
+    </div>`;
+  }).join('');
+
+  html += `</div></div>`;
+
+  /* 逐题明细 */
+  html += `<div class="group">
+    <div class="group-title">逐题明细</div>`;
+
+  R.parts.forEach(P => {
+    html += `<div style="padding:0 4px 6px;font-size:13px;color:#8e8e93;font-weight:500;">
+      ${P.sec.name}　<span style="color:#c7c7cc">${P.sec.start}—${P.sec.end}</span>
+      <span style="float:right;color:#8e8e93;">${P.right}/${P.total}</span>
+    </div>`;
+    html += `<div class="detail-grid" style="margin-bottom:12px;">`;
+    html += P.cells.map(c => {
+      if (c.status === 'missing')
+        return `<div class="dc skip">${c.n}. 缺答案</div>`;
+      if (c.status === 'ok')
+        return `<div class="dc ok">${c.n}. ${c.mine} ✓</div>`;
+      return `<div class="dc no">${c.n}. ${c.mine || '—'} ✗ <b>${c.ref}</b></div>`;
+    }).join('');
+    html += `</div>`;
+  });
+
+  html += `</div>`;
+
+  box.innerHTML = html;
+}
+
+function rateClass(rate){
+  if (rate >= 80) return 'good';
+  if (rate >= 60) return 'mid';
+  return 'bad';
+}
+
+/* =========================================================
+   9. 渲染 —— 设置页
+   ========================================================= */
+function renderSettingsPage(){
+  const refCount = Object.keys(REF).length;
+  const selCount = Object.keys(SEL).length;
+
+  $('#page-settings').innerHTML = `
+    <div class="group">
+      <div class="group-title">参考答案（当前 ${refCount} / ${TOTAL_Q}）</div>
+      <div class="card">
+        <label class="cell">
+          <span class="ico">📄</span>
+          <span class="grow">
+            从 PDF 提取答案
+            <div class="sub">选择 PDF 文件后自动识别</div>
+          </span>
+          <span class="arrow">›</span>
+          <input type="file" id="pdfInput" accept="application/pdf" hidden>
+        </label>
+        <div class="sep-line"></div>
+        <div class="cell" id="btnManualRef">
+          <span class="ico">✍️</span>
+          <span class="grow">
+            手动输入参考答案
+            <div class="sub">支持 1—5 DDADD / 1.A 2.B 格式</div>
+          </span>
+          <span class="arrow" id="arrRef">›</span>
+        </div>
+        <div class="drawer" id="drawerRef">
+          <div class="drawer-inner">
+            <textarea id="manualText" placeholder="粘贴参考答案，例如：
+1—5 DDADD 6—10 CAADB
+21-25 CDBDD 26-30 CBBDD
+1.A 2.B 3.C"></textarea>
+            <div class="drawer-btns">
+              <button class="btn gray" id="cancelRef">取消</button>
+              <button class="btn" id="applyManual">应用</button>
+            </div>
+            <div class="hint">支持 1—5 / 1-5 / 1--5 区间格式，也支持 1.A、1 A 单题格式</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">我的作答（当前 ${selCount} / ${TOTAL_Q}）</div>
+      <div class="card">
+        <div class="cell" id="btnManualAns">
+          <span class="ico">📝</span>
+          <span class="grow">
+            批量填入我的作答
+            <div class="sub">按顺序填入 A/B/C/D</div>
+          </span>
+          <span class="arrow" id="arrAns">›</span>
+        </div>
+        <div class="drawer" id="drawerAns">
+          <div class="drawer-inner">
+            <textarea id="manualAnswerText" placeholder="按题目顺序输入选项字母，例如：
+DDADDCAADBDBADDAABCD...
+或带分隔：DDADD CAADB DBADD
+或带题号：1.A 2.B 3.C"></textarea>
+            <div class="drawer-btns">
+              <button class="btn gray" id="cancelAns">取消</button>
+              <button class="btn" id="applyManualAnswer">应用</button>
+            </div>
+            <div class="hint">自动提取其中的 A/B/C/D 字母，按顺序对应第 1、2、3… 题，覆盖原有作答</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">数据管理</div>
+      <div class="card">
+        <div class="cell danger" id="btnClearSel">
+          <span>清空我的作答</span>
+        </div>
+        <div class="sep-line full"></div>
+        <div class="cell danger" id="btnClearRef">
+          <span>清空参考答案</span>
+        </div>
+        <div class="sep-line full"></div>
+        <div class="cell danger" id="btnClearAll">
+          <span>清除全部数据</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">关于</div>
+      <div class="card">
+        <div class="cell">
+          <span class="ico">📘</span>
+          <span class="grow">
+            计分规则
+            <div class="sub">第 1—35、95—100 题每题 0.7 分，其余每题 0.8 分；原始满分 99.9，按 100 分制折算。</div>
+          </span>
+        </div>
+        <div class="sep-line"></div>
+        <div class="cell">
+          <span class="ico">💾</span>
+          <span class="grow">
+            本地保存
+            <div class="sub">答案与作答仅保存在本机，关闭页面不会丢失。</div>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div id="debugBox"></div>
+
+    <div class="hint" style="text-align:center;padding:6px 0 24px;color:#c7c7cc;font-size:11.5px;">
+      答题卡 · 130 题 · 100 分制
+    </div>
+  `;
+
+  bindSettingsEvents();
+}
+
+/* =========================================================
+   10. 设置页事件绑定
+   ========================================================= */
+function bindSettingsEvents(){
+  /* —— 展开 / 收起 —— */
+  const openDrawer = (id, arr) => {
+    const d = $('#' + id), a = $('#' + arr);
+    const willOpen = !d.classList.contains('open');
+    d.classList.toggle('open', willOpen);
+    if (a) a.style.transform = willOpen ? 'rotate(90deg)' : '';
+  };
+
+  $('#btnManualRef').addEventListener('click', () => openDrawer('drawerRef', 'arrRef'));
+  $('#btnManualAns').addEventListener('click', () => openDrawer('drawerAns', 'arrAns'));
+  $('#cancelRef').addEventListener('click', () => openDrawer('drawerRef', 'arrRef'));
+  $('#cancelAns').addEventListener('click', () => openDrawer('drawerAns', 'arrAns'));
+
+  /* —— PDF 上传 —— */
+  $('#pdfInput').addEventListener('change', async e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    toast('正在解析 PDF…');
+    try {
+      const text = await extractTextFromPDF(file);
+      if (!text.trim()) throw new Error('PDF 中没有可提取的文字（可能是扫描图片版）');
+      const parsed = parseAnswers(text);
+      if (Object.keys(parsed).length === 0){
+        showDebug('已提取文字但未匹配到答案格式，片段如下：\n\n' + text.slice(0, 600));
+        toast('未能识别到答案，请手动输入');
+      } else {
+        applyReference(parsed);
+      }
+    } catch (err) {
+      console.error(err);
+      toast('解析失败：' + err.message);
+      showDebug('错误：' + err.message);
+    }
+    e.target.value = '';
+  });
+
+  /* —— 应用参考答案 —— */
+  $('#applyManual').addEventListener('click', () => {
+    const txt = $('#manualText').value;
+    if (!txt.trim()) { toast('请先粘贴参考答案'); return; }
+    const map = parseAnswers(txt);
+    if (Object.keys(map).length === 0) { toast('未识别到答案，请检查格式'); return; }
+    applyReference(map);
+    openDrawer('drawerRef', 'arrRef');
+  });
+
+  /* —— 应用我的作答 —— */
+  $('#applyManualAnswer').addEventListener('click', () => {
+    const txt = $('#manualAnswerText').value;
+    if (!txt.trim()) { toast('请输入答案字母'); return; }
+    const map = parseAnswerSequence(txt);
+    const count = Object.keys(map).length;
+    if (count === 0) { toast('未识别到 A/B/C/D'); return; }
+
+    for (const k in SEL) delete SEL[k];
+    for (const n in map) SEL[n] = map[n];
+
+    graded = false;
+    RESULT = null;
+    saveState();
+    renderChips();
+    renderAnswerPage();
+    renderStatsPage();
+    updateBadge();
+
+    openDrawer('drawerAns', 'arrAns');
+    toast(`已按顺序填入 ${count} 题`);
+  });
+
+  /* —— 清空 —— */
+  $('#btnClearSel').addEventListener('click', () => {
+    dialog({
+      title:'清空我的作答',
+      text:'将删除全部已选答案，此操作不可撤销。',
+      danger:true, okText:'清空',
+      onOk(){
+        for (const k in SEL) delete SEL[k];
+        graded = false; RESULT = null;
+        saveState(); renderChips(); renderAnswerPage(); renderStatsPage(); updateBadge();
+        toast('已清空作答');
+      }
+    });
+  });
+
+  $('#btnClearRef').addEventListener('click', () => {
+    dialog({
+      title:'清空参考答案',
+      text:'将删除已识别的参考答案，此操作不可撤销。',
+      danger:true, okText:'清空',
+      onOk(){
+        for (const k in REF) delete REF[k];
+        graded = false; RESULT = null;
+        saveState(); renderAnswerPage(); renderStatsPage(); updateBadge();
+        toast('已清空参考答案');
+      }
+    });
+  });
+
+  $('#btnClearAll').addEventListener('click', () => {
+    dialog({
+      title:'清除全部数据',
+      text:'参考答案与我的作答都将被删除。',
+      danger:true, okText:'全部清除',
+      onOk(){
+        for (const k in REF) delete REF[k];
+        for (const k in SEL) delete SEL[k];
+        graded = false; RESULT = null;
+        clearState(); renderChips(); renderAnswerPage(); renderStatsPage(); updateBadge();
+        toast('已清除全部数据');
+      }
+    });
+  });
+}
+
+/* =========================================================
+   11. PDF 文本提取
+   ========================================================= */
+async function extractTextFromPDF(file){
+  if (!window.pdfjsLib) throw new Error('PDF 解析库未加载，请检查网络');
+  const data = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data }).promise;
+
+  let out = '';
+  for (let p = 1; p <= pdf.numPages; p++){
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    let line = '';
+    for (const it of content.items){
+      line += it.str || '';
+      if (it.hasEOL) { out += line + '\n'; line = ''; }
+    }
+    out += line + '\n';
+  }
+  return out;
+}
+
+function showDebug(txt){
+  const box = $('#debugBox');
+  if (!box) return;
+  box.textContent = txt.length > 1200 ? txt.slice(0, 1200) + '\n…' : txt;
+  box.style.display = 'block';
+}
+
+/* =========================================================
+   12. 文本解析
+   ========================================================= */
+function normalizeText(t){
+  return String(t)
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g,
+             ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D~～﹣－至到]/g, '-')
+    .replace(/[．。]/g, '.')
+    .replace(/[、，]/g, ',')
+    .replace(/：/g, ':')
+    .replace(/（/g, '(')
+    .replace(/）/g, ')');
+}
+
+function parseAnswers(rawText){
+  const answers = {};
+  const s = normalizeText(rawText);
+  const occupied = [];
+  let m;
+
+  /* 区间格式 */
+  const rangeRe = /(\d{1,3})\s*-{1,3}\s*(\d{1,3})\s*[.:,]?[ \t]*([A-Da-d]{2,})/gi;
+  while ((m = rangeRe.exec(s)) !== null){
+    const start = parseInt(m[1], 10);
+    const end   = parseInt(m[2], 10);
+    const letters = m[3].toUpperCase().split('');
+    if (end >= start){
+      const take = Math.min(end - start + 1, letters.length);
+      for (let i = 0; i < take; i++){
+        const qn = start + i;
+        if (qn >= 1 && qn <= TOTAL_Q) answers[qn] = letters[i];
+      }
+    }
+    occupied.push([m.index, m.index + m[0].length]);
+    if (rangeRe.lastIndex === m.index) rangeRe.lastIndex++;
+  }
+
+  /* 抹掉已解析区间 */
+  const arr = s.split('');
+  occupied.forEach(seg => {
+    for (let i = seg[0]; i < seg[1]; i++) arr[i] = ' ';
+  });
+  const rest = arr.join('');
+
+  /* 单题格式 */
+  const singleRe = /(\d{1,3})\s*[.:,]?[ \t]*([A-Da-d])(?![A-Za-z0-9])/gi;
+  while ((m = singleRe.exec(rest)) !== null){
+    const n = parseInt(m[1], 10);
+    const l = m[2].toUpperCase();
+    if (n >= 1 && n <= TOTAL_Q && !(n in answers)) answers[n] = l;
+  }
+
+  return answers;
+}
+
+function parseAnswerSequence(text){
+  const letters = String(text).toUpperCase().replace(/[^A-D]/g, '');
+  const map = {};
+  const max = Math.min(letters.length, TOTAL_Q);
+  for (let i = 0; i < max; i++) map[i + 1] = letters[i];
+  return map;
+}
+
+/* =========================================================
+   13. 应用参考答案
+   ========================================================= */
+function applyReference(map){
+  for (const k in REF) delete REF[k];
+  let cnt = 0;
+  for (const k in map){
+    if (map[k]) { REF[k] = map[k]; cnt++; }
+  }
+
+  if (cnt === 0){
+    toast('未识别到答案，请改用手动输入');
+    return;
+  }
+
+  graded = false;
+  RESULT = null;
+  saveState();
+  renderAnswerPage();
+  renderStatsPage();
+  updateBadge();
+  toast(`已识别 ${cnt} 个参考答案`);
+}
+
+/* =========================================================
+   14. 交卷
+   ========================================================= */
+function doGrade(){
+  if (Object.keys(REF).length === 0){
+    dialog({
+      title:'还没有参考答案',
+      text:'请先在「设置」中上传 PDF，或手动输入参考答案。',
+      okText:'去设置',
+      onOk(){ switchTab('settings'); }
+    });
+    return;
+  }
+
+  RESULT = computeResult();
+  graded = true;
+
+  /* 更新答题页标记 */
+  refreshAnswerPageMarkers();
+  renderChips();
+  renderStatsPage();
+  updateBadge();
+
+  switchTab('stats');
+  toast(`得分 ${RESULT.score.toFixed(1)} 分`);
+}
+
+/* =========================================================
+   15. 顶部 / 底部状态
+   ========================================================= */
+function updateBadge(){
+  let done = 0;
+  for (let n = 1; n <= TOTAL_Q; n++) if (SEL[n]) done++;
+  $('#navBadge').textContent = graded && RESULT
+    ? RESULT.score.toFixed(1) + '分'
+    : done + '/' + TOTAL_Q;
+}
+
+/* =========================================================
+   16. 标签切换
+   ========================================================= */
+function switchTab(tab){
+  curTab = tab;
+  $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  $$('.page').forEach(p => p.classList.remove('on'));
+  $('#page-' + tab).classList.add('on');
+
+  const showChips = (tab === 'answer');
+  $('#chips').classList.toggle('hidden', !showChips);
+
+  const titles = { answer:'答题卡', stats:'成绩报告', settings:'设置' };
+  $('#navTitle').textContent = titles[tab] || '答题卡';
+
+  /* 内容回到顶部 */
+  $('#content').scrollTop = 0;
+
+  if (tab === 'stats') renderStatsPage();
+  if (tab === 'settings') renderSettingsPage();
+  if (tab === 'answer') renderAnswerPage();
+
+  updateBadge();
+}
+
+/* =========================================================
+   17. 事件绑定
+   ========================================================= */
+
+/* 选项点击（事件委托） */
+$('#page-answer').addEventListener('click', e => {
+  const btn = e.target.closest('.opt');
+  if (!btn) return;
+  const q = btn.closest('.q');
+  const n = +q.dataset.n;
+  const l = btn.dataset.l;
+
+  if (SEL[n] === l) delete SEL[n];
+  else SEL[n] = l;
+
+  /* 若已交卷，实时重算 */
+  if (graded){
+    RESULT = computeResult();
+  }
+
+  refreshQuestion(n);
+  renderChips();
+  updateBadge();
+  saveState();
+  if (graded) renderStatsPage();
+
+  if (navigator.vibrate){ try{ navigator.vibrate(6); }catch(_){} }
+});
+
+/* 分段 chips */
+$('#chips').addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  curSec = +chip.dataset.i;
+  renderChips();
+  renderAnswerPage();
+  $('#content').scrollTop = 0;
+});
+
+/* 底部标签 */
+$$('.tab').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+
+/* 阻止双击缩放 */
+let lastTouch = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouch <= 300) e.preventDefault();
+  lastTouch = now;
+}, { passive: false });
+
+/* 阻止手势缩放 */
+document.addEventListener('gesturestart', e => e.preventDefault());
+
+/* 防止页面整体橡皮筋回弹 */
+document.addEventListener('touchmove', e => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+/* =========================================================
+   18. 启动
+   ========================================================= */
+(function init(){
+  loadState();
+
+  /* 顶部「交卷」用长按标题触发？—— 改为双击标题栏交卷更方便，但这里用底部导航中间？
+     为保持简洁，把「交卷」做成顶部右侧徽章点击 */
+  $('#navBadge').style.cursor = 'pointer';
+  $('#navBadge').addEventListener('click', () => {
+    if (curTab === 'stats' && graded){
+      /* 成绩页再次点击 = 重新交卷 */
+      doGrade();
+    } else {
+      doGrade();
+    }
+  });
+
+  renderChips();
+  renderAnswerPage();
+  renderStatsPage();
+  updateBadge();
+
+  /* 设置页延后渲染（避免首次加载过重） */
+  setTimeout(() => renderSettingsPage(), 60);
+})();
+</script>
+</body>
+</html>
